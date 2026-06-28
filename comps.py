@@ -1,4 +1,5 @@
 import yfinance as yf
+import pandas as pd
 
 tickers = {
     "BMW.DE": "BMW",
@@ -10,7 +11,70 @@ tickers = {
     "TSLA": "Tesla",
 }
 
+rows = []
+
 for ticker, name in tickers.items():
     stock = yf.Ticker(ticker)
     info = stock.info
-    print(name, "| Market Cap:", info.get("marketCap"))
+
+    market_cap = info.get("marketCap")
+    total_debt = info.get("totalDebt")
+    cash = info.get("totalCash")
+    ebitda = info.get("ebitda")
+    revenue = info.get("totalRevenue")
+
+    # Skip if any critical field is missing
+    if None in (market_cap, total_debt, cash, ebitda, revenue):
+        print(f"Skipping {name} - missing data")
+        continue
+
+    enterprise_value = market_cap + total_debt - cash
+
+    ev_ebitda = enterprise_value / ebitda if ebitda else None
+    ev_revenue = enterprise_value / revenue if revenue else None
+
+    rows.append({
+        "Company": name,
+        "Market Cap ($)": market_cap,
+        "Total Debt ($)": total_debt,
+        "Cash ($)": cash,
+        "EV ($)": enterprise_value,
+        "EBITDA ($)": ebitda,
+        "EV/EBITDA": round(ev_ebitda, 2) if ev_ebitda else None,
+        "EV/Revenue": round(ev_revenue, 2) if ev_revenue else None,
+    })
+
+df = pd.DataFrame(rows)
+print(df.to_string(index=False))
+
+df = pd.DataFrame(rows)
+print("STEP 1 - Basic table:")
+print(df.to_string(index=False))
+
+try:
+    print("\nSTEP 2 - Adding flags...")
+    df["EV/EBITDA Flag"] = df["EV/EBITDA"].apply(lambda x: "NM" if x is not None and x < 0 else "")
+    print("Flags added successfully.")
+
+    print("\nSTEP 3 - Filtering for stats...")
+    clean_for_stats = df[(df["EV/EBITDA Flag"] == "") & (df["Company"] != "Tesla")]
+    print(f"Filtered down to {len(clean_for_stats)} companies.")
+    print(clean_for_stats[["Company", "EV/EBITDA"]].to_string(index=False))
+
+    print("\nSTEP 4 - Calculating summary stats...")
+    summary = {
+        "Mean EV/EBITDA": round(clean_for_stats["EV/EBITDA"].mean(), 2),
+        "Median EV/EBITDA": round(clean_for_stats["EV/EBITDA"].median(), 2),
+        "Min EV/EBITDA": round(clean_for_stats["EV/EBITDA"].min(), 2),
+        "Max EV/EBITDA": round(clean_for_stats["EV/EBITDA"].max(), 2),
+    }
+    print("Summary calculated.")
+
+    print("\nSTEP 5 - Printing results...")
+    for k, v in summary.items():
+        print(f"{k}: {v}")
+
+except Exception as e:
+    print(f"\n!!! ERROR CAUGHT: {e}")
+
+print("\nSCRIPT FINISHED.")
