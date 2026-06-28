@@ -48,33 +48,23 @@ df = pd.DataFrame(rows)
 print(df.to_string(index=False))
 
 df = pd.DataFrame(rows)
-print("STEP 1 - Basic table:")
+
+# Flag unreliable multiples (negative EBITDA = not meaningful)
+df["EV/EBITDA Flag"] = df["EV/EBITDA"].apply(lambda x: "NM" if x is not None and x < 0 else "")
+
+print("Full comps table:")
 print(df.to_string(index=False))
 
-try:
-    print("\nSTEP 2 - Adding flags...")
-    df["EV/EBITDA Flag"] = df["EV/EBITDA"].apply(lambda x: "NM" if x is not None and x < 0 else "")
-    print("Flags added successfully.")
+# Exclude NM and Tesla (growth outlier) from summary stats
+clean_for_stats = df[(df["EV/EBITDA Flag"] == "") & (df["Company"] != "Tesla")]
 
-    print("\nSTEP 3 - Filtering for stats...")
-    clean_for_stats = df[(df["EV/EBITDA Flag"] == "") & (df["Company"] != "Tesla")]
-    print(f"Filtered down to {len(clean_for_stats)} companies.")
-    print(clean_for_stats[["Company", "EV/EBITDA"]].to_string(index=False))
+summary = {
+    "Mean EV/EBITDA": round(clean_for_stats["EV/EBITDA"].mean(), 2),
+    "Median EV/EBITDA": round(clean_for_stats["EV/EBITDA"].median(), 2),
+    "Min EV/EBITDA": round(clean_for_stats["EV/EBITDA"].min(), 2),
+    "Max EV/EBITDA": round(clean_for_stats["EV/EBITDA"].max(), 2),
+}
 
-    print("\nSTEP 4 - Calculating summary stats...")
-    summary = {
-        "Mean EV/EBITDA": round(clean_for_stats["EV/EBITDA"].mean(), 2),
-        "Median EV/EBITDA": round(clean_for_stats["EV/EBITDA"].median(), 2),
-        "Min EV/EBITDA": round(clean_for_stats["EV/EBITDA"].min(), 2),
-        "Max EV/EBITDA": round(clean_for_stats["EV/EBITDA"].max(), 2),
-    }
-    print("Summary calculated.")
-
-    print("\nSTEP 5 - Printing results...")
-    for k, v in summary.items():
-        print(f"{k}: {v}")
-
-except Exception as e:
-    print(f"\n!!! ERROR CAUGHT: {e}")
-
-print("\nSCRIPT FINISHED.")
+print("\nSummary stats (ex-Tesla, ex-NM):")
+for k, v in summary.items():
+    print(f"{k}: {v}")
