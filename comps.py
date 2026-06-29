@@ -9,6 +9,14 @@ tickers = {
     "F": "Ford",
     "GM": "General Motors",
     "TSLA": "Tesla",
+    "TM": "Toyota",
+    "HMC": "Honda",
+    "RACE": "Ferrari",
+    "MGA": "Magna International",
+    "APTV": "Aptiv",
+    "BWA": "BorgWarner",
+    "ALV": "Autoliv",
+    "LEA": "Lear Corporation",
 }
 
 rows = []
@@ -47,7 +55,6 @@ for ticker, name in tickers.items():
 df = pd.DataFrame(rows)
 print(df.to_string(index=False))
 
-df = pd.DataFrame(rows)
 
 # Flag unreliable multiples (negative EBITDA = not meaningful)
 df["EV/EBITDA Flag"] = df["EV/EBITDA"].apply(lambda x: "NM" if x is not None and x < 0 else "")
@@ -68,3 +75,55 @@ summary = {
 print("\nSummary stats (ex-Tesla, ex-NM):")
 for k, v in summary.items():
     print(f"{k}: {v}")
+
+# --- Test the comps method: value BMW using ONLY its peers ---
+
+target_name = "BMW"
+
+# Peer group = everyone except the target, and exclude NM multiples and Tesla (growth outlier)
+peer_group = df[
+    (df["Company"] != target_name) &
+    (df["Company"] != "Tesla") &
+    (df["EV/EBITDA Flag"] == "")
+]
+
+peer_median_multiple = peer_group["EV/EBITDA"].median()
+
+print(f"\n--- Testing comps method on {target_name} ---")
+print(f"Peer group used: {peer_group['Company'].tolist()}")
+print(f"Peer median EV/EBITDA (excluding {target_name}): {round(peer_median_multiple, 2)}")
+
+# Get BMW's actual EBITDA and actual EV from our table
+target_row = df[df["Company"] == target_name].iloc[0]
+target_ebitda = target_row["EBITDA ($)"]
+actual_ev = target_row["EV ($)"]
+
+# Apply the peer multiple to BMW's own EBITDA
+implied_ev = peer_median_multiple * target_ebitda
+
+print(f"\n{target_name} actual EBITDA: ${target_ebitda:,.0f}")
+print(f"{target_name} actual EV (from market data): ${actual_ev:,.0f}")
+print(f"{target_name} implied EV (peer median x EBITDA): ${implied_ev:,.0f}")
+
+difference_pct = ((implied_ev - actual_ev) / actual_ev) * 100
+print(f"\nDifference: {difference_pct:+.1f}% (implied vs actual)")
+
+
+with pd.ExcelWriter("comps_output.xlsx", engine="openpyxl") as writer:
+    df.to_excel(writer, sheet_name="Comps Table", index=False)
+
+print("\nSaved comps table to comps_output.xlsx")
+
+import matplotlib.pyplot as plt
+
+chart_df = df[df["EV/EBITDA Flag"] == ""].sort_values("EV/EBITDA")
+
+plt.figure(figsize=(10, 6))
+plt.barh(chart_df["Company"], chart_df["EV/EBITDA"])
+plt.xlabel("EV/EBITDA")
+plt.title("Auto Sector: EV/EBITDA Comparison")
+plt.tight_layout()
+plt.savefig("ev_ebitda_chart.png")
+plt.show()
+
+print("Saved chart to ev_ebitda_chart.png")
